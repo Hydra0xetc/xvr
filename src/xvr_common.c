@@ -77,7 +77,9 @@ void Xvr_initCommandLine(int argc, const char* argv[]) {
             continue;
         }
 
-        if (argv[i][0] != '-') {  // if argv not start with '-' its a file
+        // if argv not start with '-' and the end not "xb" its a file
+        if (argv[i][0] != '-' &&
+            (strcmp(argv[i] + strlen(argv[i]) - 3, ".xb") != 0)) {
             Xvr_commandLine.sourceFile = (char*)argv[i];
             i++;
             Xvr_commandLine.error = false;
