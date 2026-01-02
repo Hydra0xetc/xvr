@@ -13,22 +13,33 @@
 static Xvr_Literal addition(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
                             Xvr_Literal rhs) {
     if (XVR_IS_STRING(lhs) && XVR_IS_STRING(rhs)) {
+        // calculating length resulting string
         int totalLength =
             XVR_AS_STRING(lhs)->length + XVR_AS_STRING(rhs)->length;
+        
+            // make sure the result doesn't exceed max allowed string lenght
         if (totalLength > XVR_MAX_STRING_LENGTH) {
             interpreter->errorOutput(
                 "Can't concatenate these strings (result is too long)\n");
             return XVR_TO_NULL_LITERAL;
         }
 
-        // concat the strings
+        /**
+         * concat with
+         * - create temp buffer on stack
+         * - use the safely snprintf for copy strings into buffer
+         */
         char buffer[XVR_MAX_STRING_LENGTH];
         snprintf(buffer, XVR_MAX_STRING_LENGTH, "%s%s",
                  Xvr_toCString(XVR_AS_STRING(lhs)),
                  Xvr_toCString(XVR_AS_STRING(rhs)));
+        
+        // create new string object from the buffer
         Xvr_Literal literal = XVR_TO_STRING_LITERAL(
             Xvr_createRefStringLength(buffer, totalLength));
 
+        // since consue input string (rhs / lhs) for create new one
+        // and must be decrement reference counts or free them now
         Xvr_freeLiteral(lhs);
         Xvr_freeLiteral(rhs);
 
@@ -36,6 +47,7 @@ static Xvr_Literal addition(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
     }
 
     if (XVR_IS_FLOAT(lhs) && XVR_IS_INTEGER(rhs)) {
+        // make sure get float addition rather than truncate the float
         rhs = XVR_TO_FLOAT_LITERAL(XVR_AS_INTEGER(rhs));
     }
 
@@ -43,12 +55,14 @@ static Xvr_Literal addition(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
         lhs = XVR_TO_FLOAT_LITERAL(XVR_AS_INTEGER(lhs));
     }
 
+    // initialze to null (indicate fail if not update later)
     Xvr_Literal result = XVR_TO_NULL_LITERAL;
 
     if (XVR_IS_INTEGER(lhs) && XVR_IS_INTEGER(rhs)) {
         result =
             XVR_TO_INTEGER_LITERAL(XVR_AS_INTEGER(lhs) + XVR_AS_INTEGER(rhs));
 
+        // free input operand as they are no longer needed
         Xvr_freeLiteral(lhs);
         Xvr_freeLiteral(rhs);
 
@@ -71,6 +85,7 @@ static Xvr_Literal addition(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
     Xvr_printLiteralCustom(rhs, interpreter->errorOutput);
     interpreter->errorOutput("\n");
 
+    // make sure clean up input before return error
     Xvr_freeLiteral(lhs);
     Xvr_freeLiteral(rhs);
 
@@ -79,6 +94,13 @@ static Xvr_Literal addition(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
 
 static Xvr_Literal subtraction(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
                                Xvr_Literal rhs) {
+
+    /**
+     * NOTE: subtraction between float and integer can be lossy if truncate
+     * the float to an integer. instead that, promote the integer to float
+     * to make sure max precision
+     */
+
     if (XVR_IS_FLOAT(lhs) && XVR_IS_INTEGER(rhs)) {
         rhs = XVR_TO_FLOAT_LITERAL(XVR_AS_INTEGER(rhs));
     }
@@ -90,9 +112,11 @@ static Xvr_Literal subtraction(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
     Xvr_Literal result = XVR_TO_NULL_LITERAL;
 
     if (XVR_IS_INTEGER(lhs) && XVR_IS_INTEGER(rhs)) {
+        // standard integer subtract (lhs - rhs)
         result =
             XVR_TO_INTEGER_LITERAL(XVR_AS_INTEGER(lhs) - XVR_AS_INTEGER(rhs));
 
+        // the input are consumed, so freeing
         Xvr_freeLiteral(lhs);
         Xvr_freeLiteral(rhs);
 
@@ -100,8 +124,10 @@ static Xvr_Literal subtraction(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
     }
 
     if (XVR_IS_FLOAT(lhs) && XVR_IS_FLOAT(rhs)) {
+        // standard integer subtract (lhs - rhs)
         result = XVR_TO_FLOAT_LITERAL(XVR_AS_FLOAT(lhs) - XVR_AS_FLOAT(rhs));
 
+        // input are consumed, so freeing
         Xvr_freeLiteral(lhs);
         Xvr_freeLiteral(rhs);
 
@@ -123,6 +149,14 @@ static Xvr_Literal subtraction(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
 
 static Xvr_Literal multiplication(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
                                   Xvr_Literal rhs) {
+
+     /**
+     * NOTE: if one operand is float and the other is integer, convert it
+     * the integer to a float, for make sure the multiplication happens
+     * in floating point space, preserve decimal part that would be lost
+     * in integer arithmetic
+     */
+                                    
     if (XVR_IS_FLOAT(lhs) && XVR_IS_INTEGER(rhs)) {
         rhs = XVR_TO_FLOAT_LITERAL(XVR_AS_INTEGER(rhs));
     }
@@ -168,25 +202,37 @@ static Xvr_Literal multiplication(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
 
 static Xvr_Literal division(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
                             Xvr_Literal rhs) {
+    
+   
+
     if ((XVR_IS_INTEGER(rhs) && XVR_AS_INTEGER(rhs) == 0) ||
         (XVR_IS_FLOAT(rhs) && XVR_AS_FLOAT(rhs) == 0)) {
         interpreter->errorOutput("Can't divide by zero");
     }
 
+    // if the types are mixed, promoting the integer to floating
+    // point numbers to make sure floating point division occurs
+
+    // case: LHS are float, RHS integer
     if (XVR_IS_FLOAT(lhs) && XVR_IS_INTEGER(rhs)) {
         rhs = XVR_TO_FLOAT_LITERAL(XVR_AS_INTEGER(rhs));
     }
 
+    // case: LHS are integer, RHS float
     if (XVR_IS_INTEGER(lhs) && XVR_IS_FLOAT(rhs)) {
         lhs = XVR_TO_FLOAT_LITERAL(XVR_AS_INTEGER(lhs));
     }
 
+    // initialize result to NULL
     Xvr_Literal result = XVR_TO_NULL_LITERAL;
 
+    // if both operands are integer, perform standard integer division
     if (XVR_IS_INTEGER(lhs) && XVR_IS_INTEGER(rhs)) {
+        // standard integer multiplication
         result =
             XVR_TO_INTEGER_LITERAL(XVR_AS_INTEGER(lhs) + XVR_AS_INTEGER(rhs));
 
+        // free the input after used for calculation
         Xvr_freeLiteral(lhs);
         Xvr_freeLiteral(rhs);
 
@@ -258,6 +304,9 @@ static Xvr_Literal modulo(Xvr_Interpreter* interpreter, Xvr_Literal lhs,
 
 int Xvr_private_index(Xvr_Interpreter* interpreter,
                       Xvr_LiteralArray* arguments) {
+    
+    // pop argumnts from the stack in reverse order of how they were pushed
+    // stack structure typically looks like [compound, first, second, third]
     Xvr_Literal op = Xvr_popLiteralArray(arguments);
     Xvr_Literal assign = Xvr_popLiteralArray(arguments);
     Xvr_Literal third = Xvr_popLiteralArray(arguments);
@@ -267,6 +316,8 @@ int Xvr_private_index(Xvr_Interpreter* interpreter,
 
     // dictionary - no slicing
     if (XVR_IS_DICTIONARY(compound)) {
+        // if keys (first, second, third) are variables, look up the actual
+        // variables
         if (XVR_IS_IDENTIFIER(first)) {
             Xvr_Literal idn = first;
             Xvr_parseIdentifierToValue(interpreter, &first);
@@ -285,7 +336,8 @@ int Xvr_private_index(Xvr_Interpreter* interpreter,
             Xvr_freeLiteral(idn);
         }
 
-        // second and third are bad args to dictionaries
+        // dictionary error check, dictionary do not support slicing
+        // second (stop), and third (step) must be NULL
         if (!XVR_IS_NULL(second) || !XVR_IS_NULL(third)) {
             interpreter->errorOutput(
                 "Index slicing not allowed for dictionaries\n");
