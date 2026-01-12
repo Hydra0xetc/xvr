@@ -1957,7 +1957,7 @@ void Xvr_freeParser(Xvr_Parser* parser) {
 
 Xvr_ASTNode* Xvr_scanParser(Xvr_Parser* parser) {
     // check for EOF
-    if (match(parser, XVR_TOKEN_EOF)) {
+    if (parser->current.type == XVR_TOKEN_EOF) {
         return NULL;
     }
 
